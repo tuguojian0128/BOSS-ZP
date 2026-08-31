@@ -1376,10 +1376,21 @@ class _PlaceholderPage extends StatelessWidget {
   }
 }
 
-class _PlatformAccountsPage extends StatelessWidget {
+class _PlatformAccountsPage extends StatefulWidget {
   const _PlatformAccountsPage({required this.controller});
 
   final WorkbenchController controller;
+
+  @override
+  State<_PlatformAccountsPage> createState() => _PlatformAccountsPageState();
+}
+
+class _PlatformAccountsPageState extends State<_PlatformAccountsPage> {
+  late final PlatformAccountRepository repository =
+      RestPlatformAccountRepository(ApiClient());
+  bool loading = false;
+
+  WorkbenchController get controller => widget.controller;
 
   static const platforms = [
     ('BOSS 直聘', 'https://www.zhipin.com/', Icons.work_outline_rounded),
@@ -1397,7 +1408,17 @@ class _PlatformAccountsPage extends StatelessWidget {
       actions: [TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')), FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('打开官方页面'))],
     ));
     if (confirmed != true) return;
-    final launched = await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    String authorizationUrl = url;
+    try {
+      setState(() => loading = true);
+      authorizationUrl = await repository.beginAuthorization(name);
+    } catch (_) {
+      // Until an official OAuth adapter is configured, retain the safe
+      // fallback to the platform's public login page.
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
+    final launched = await launchUrl(Uri.parse(authorizationUrl), mode: LaunchMode.externalApplication);
     if (!context.mounted) return;
     if (!launched) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('无法打开$name官方页面')));
@@ -1408,7 +1429,20 @@ class _PlatformAccountsPage extends StatelessWidget {
       content: const Text('请在官方页面完成登录。完成后回到这里，点击“已完成登录”，后续将通过官方授权接口同步职位。'),
       actions: [TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('稍后再说')), FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('已完成登录'))],
     ));
-    if (linked == true) controller.setPlatformConnected(name, true);
+    if (linked == true) {
+      try {
+        // The current demo callback accepts the authorization state returned
+        // by the backend. Production adapters will redirect here directly.
+        final state = Uri.tryParse(authorizationUrl)?.queryParameters['state'];
+        if (state != null && state.isNotEmpty) {
+          await repository.completeAuthorization(state);
+        }
+      } catch (_) {
+        // Keep the account disconnected when the official callback has not
+        // completed; never pretend a local click is a successful authorization.
+      }
+      await controller.refreshPlatformAccounts();
+    }
   }
 
   @override
@@ -1420,7 +1454,7 @@ class _PlatformAccountsPage extends StatelessWidget {
       const SizedBox(height: 16),
       Wrap(spacing: 14, runSpacing: 14, children: platforms.map((item) {
         final connected = controller.isPlatformConnected(item.$1);
-        return SizedBox(width: 310, child: _GlassCard(padding: const EdgeInsets.all(18), child: Row(children: [Container(width: 42, height: 42, decoration: BoxDecoration(color: connected ? const Color(0x1A34C759) : const Color(0x12007AFF), borderRadius: BorderRadius.circular(14)), child: Icon(item.$3, color: connected ? const Color(0xFF34C759) : const Color(0xFF007AFF))), const SizedBox(width: 12), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(item.$1, style: const TextStyle(fontWeight: FontWeight.w700)), const SizedBox(height: 4), Text(connected ? '已连接 · 可筛选职位' : '未连接', style: TextStyle(fontSize: 12, color: connected ? const Color(0xFF248A3D) : const Color(0xFF8E8E93)))])), connected ? IconButton(onPressed: () => controller.setPlatformConnected(item.$1, false), icon: const Icon(Icons.link_off_rounded, size: 19)) : OutlinedButton(onPressed: () => _connect(context, item.$1, item.$2), child: const Text('登录连接'))])));
+        return SizedBox(width: 310, child: _GlassCard(padding: const EdgeInsets.all(18), child: Row(children: [Container(width: 42, height: 42, decoration: BoxDecoration(color: connected ? const Color(0x1A34C759) : const Color(0x12007AFF), borderRadius: BorderRadius.circular(14)), child: Icon(item.$3, color: connected ? const Color(0xFF34C759) : const Color(0xFF007AFF))), const SizedBox(width: 12), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(item.$1, style: const TextStyle(fontWeight: FontWeight.w700)), const SizedBox(height: 4), Text(connected ? '已连接 · 可筛选职位' : '未连接', style: TextStyle(fontSize: 12, color: connected ? const Color(0xFF248A3D) : const Color(0xFF8E8E93)))])), connected ? IconButton(onPressed: loading ? null : () async { await repository.disconnect(item.$1); await controller.refreshPlatformAccounts(); }, icon: const Icon(Icons.link_off_rounded, size: 19)) : OutlinedButton(onPressed: loading ? null : () => _connect(context, item.$1, item.$2), child: const Text('登录连接'))])));
       }).toList()),
     ]);
   }
