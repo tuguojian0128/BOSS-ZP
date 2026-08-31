@@ -4,7 +4,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import 'features/resume/data/mock_resume_repository.dart';
+import 'features/resume/data/rest_resume_repository.dart';
 import 'features/resume/domain/resume_repository.dart';
 import 'features/applications/data/rest_application_repository.dart';
 import 'features/applications/domain/application_repository.dart';
@@ -751,7 +751,7 @@ class _ResumePage extends StatefulWidget {
 }
 
 class _ResumePageState extends State<_ResumePage> {
-  final ResumeRepository repository = MockResumeRepository();
+  final ResumeRepository repository = RestResumeRepository(ApiClient());
   ResumeProfile? profile;
   ResumeParseTask? parseTask;
   bool isImporting = false;
@@ -765,8 +765,8 @@ class _ResumePageState extends State<_ResumePage> {
   }
 
   Future<void> _loadDemoProfile() async {
-    final loaded = await repository.getProfile('resume_demo_001');
-    if (mounted) setState(() => profile = loaded);
+    // There is no global demo profile: each user only sees their own records.
+    // The page starts empty and is populated after the user imports a resume.
   }
 
   Future<void> importResume() async {
@@ -789,7 +789,16 @@ class _ResumePageState extends State<_ResumePage> {
       parseTask = null;
     });
     try {
-      final ticket = await repository.createImport(file.name, 'application/octet-stream');
+      final extension = file.extension?.toLowerCase();
+      final contentType = switch (extension) {
+        'pdf' => 'application/pdf',
+        'doc' => 'application/msword',
+        'docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'png' => 'image/png',
+        'jpg' || 'jpeg' => 'image/jpeg',
+        _ => 'application/octet-stream',
+      };
+      final ticket = await repository.createImport(file.name, contentType);
       if (mounted) {
         setState(() {
           parseTask = ResumeParseTask(taskId: ticket.taskId, status: ResumeParseStatus.uploading, progress: 8, message: '文件已选中，准备上传');
@@ -801,7 +810,19 @@ class _ResumePageState extends State<_ResumePage> {
         }
       });
       await repository.uploadImport(ticket, bytes);
-      final task = await repository.getParseTask(ticket.taskId);
+      var task = await repository.getParseTask(ticket.taskId);
+      for (var attempt = 0;
+          attempt < 30 &&
+              task.status != ResumeParseStatus.needsReview &&
+              task.status != ResumeParseStatus.failed;
+          attempt++) {
+        if (mounted) setState(() => parseTask = task);
+        await Future<void>.delayed(const Duration(milliseconds: 450));
+        task = await repository.getParseTask(ticket.taskId);
+      }
+      if (task.status == ResumeParseStatus.failed) {
+        throw StateError('resume_parse_failed');
+      }
       final parsed = await repository.getProfile(ticket.resumeId);
       if (!mounted) return;
       setState(() {

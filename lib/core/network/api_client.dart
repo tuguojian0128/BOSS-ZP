@@ -41,8 +41,26 @@ class ApiClient {
     return _decode(response);
   }
 
+  Future<Map<String, dynamic>> patchJson(String path,
+      [Map<String, dynamic> body = const {}]) async {
+    final response = await _send(() => _client.patch(_uri(path),
+        headers: _headers(), body: jsonEncode(body)));
+    return _decode(response);
+  }
+
   Future<void> delete(String path) async {
     final response = await _send(() => _client.delete(_uri(path), headers: _headers()));
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw ApiException(response.statusCode, response.body);
+    }
+  }
+
+  Future<void> putBytes(String path, List<int> bytes, {String? contentType}) async {
+    final response = await _client.put(_uri(path), headers: {
+      'content-type': contentType ?? 'application/octet-stream',
+      if ((_sharedAccessToken ?? accessToken)?.isNotEmpty == true)
+        'authorization': 'Bearer ${_sharedAccessToken ?? accessToken}',
+    }, body: bytes);
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw ApiException(response.statusCode, response.body);
     }
