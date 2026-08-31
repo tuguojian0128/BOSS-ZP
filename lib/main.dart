@@ -10,6 +10,7 @@ import 'features/applications/data/rest_application_repository.dart';
 import 'features/applications/domain/application_repository.dart';
 import 'core/network/api_client.dart';
 import 'features/auth/presentation/auth_gate.dart';
+import 'features/auth/domain/auth_repository.dart';
 
 void main() {
   runApp(const BossJobWorkbenchApp());
@@ -77,7 +78,10 @@ class BossJobWorkbenchApp extends StatelessWidget {
           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         ),
       ),
-      home: AuthGate(builder: (_) => const WorkbenchPage()),
+      home: AuthGate(builder: (context) => WorkbenchPage(
+            session: AuthSessionScope.of(context),
+            onLogout: () => AuthSessionScope.logout(context),
+          )),
     );
   }
 }
@@ -434,7 +438,9 @@ class WorkbenchController extends ChangeNotifier {
 }
 
 class WorkbenchPage extends StatefulWidget {
-  const WorkbenchPage({super.key});
+  const WorkbenchPage({super.key, required this.session, required this.onLogout});
+  final AuthSession session;
+  final VoidCallback onLogout;
 
   @override
   State<WorkbenchPage> createState() => _WorkbenchPageState();
@@ -464,6 +470,7 @@ class _WorkbenchPageState extends State<WorkbenchPage> {
                   _NavigationRail(
                     selectedIndex: selectedNav,
                     onSelected: (index) => setState(() => selectedNav = index),
+                    onLogout: widget.onLogout,
                   ),
                   Expanded(
                     child: SafeArea(
@@ -1360,10 +1367,11 @@ class _PlatformAccountsPage extends StatelessWidget {
 }
 
 class _NavigationRail extends StatelessWidget {
-  const _NavigationRail({required this.selectedIndex, required this.onSelected});
+  const _NavigationRail({required this.selectedIndex, required this.onSelected, required this.onLogout});
 
   final int selectedIndex;
   final ValueChanged<int> onSelected;
+  final VoidCallback onLogout;
 
   @override
   Widget build(BuildContext context) {
@@ -1428,6 +1436,11 @@ class _NavigationRail extends StatelessWidget {
             );
           }),
           const Spacer(),
+          IconButton(
+            tooltip: '退出登录',
+            onPressed: onLogout,
+            icon: const Icon(Icons.logout_rounded, color: Color(0xFF8E8E93)),
+          ),
           IconButton(
             onPressed: () {},
             icon: const Icon(Icons.settings_outlined, color: Color(0xFF8E8E93)),

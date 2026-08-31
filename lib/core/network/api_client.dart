@@ -15,6 +15,7 @@ class ApiClient {
   String? refreshToken;
   static String? _sharedAccessToken;
   static String? _sharedRefreshToken;
+  static void Function()? onSessionExpired;
   Future<void>? _refreshInFlight;
 
   static void setSharedTokens({String? accessToken, String? refreshToken}) {
@@ -86,6 +87,7 @@ class ApiClient {
         accessToken = null;
         refreshToken = null;
         clearSharedTokens();
+        onSessionExpired?.call();
         return;
       }
       final data = jsonDecode(response.body) as Map;

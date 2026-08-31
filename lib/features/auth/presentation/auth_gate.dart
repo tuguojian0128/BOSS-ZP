@@ -19,13 +19,37 @@ class _AuthGateState extends State<AuthGate> {
 
   @override
   Widget build(BuildContext context) {
+    ApiClient.onSessionExpired = () {
+      if (mounted) setState(() => session = null);
+    };
     final current = session;
-    if (current != null) return widget.builder(context);
+    if (current != null) {
+      return AuthSessionScope(
+        session: current,
+        onLogout: () async {
+          await repository.logout();
+          if (mounted) setState(() => session = null);
+        },
+        child: Builder(builder: widget.builder),
+      );
+    }
     return LoginPage(
       repository: repository,
       onAuthenticated: (value) => setState(() => session = value),
     );
   }
+}
+
+class AuthSessionScope extends InheritedWidget {
+  const AuthSessionScope({super.key, required this.session, required this.onLogout, required super.child});
+  final AuthSession session;
+  final VoidCallback onLogout;
+
+  static AuthSession of(BuildContext context) => context.dependOnInheritedWidgetOfExactType<AuthSessionScope>()!.session;
+  static VoidCallback logout(BuildContext context) => context.findAncestorWidgetOfExactType<AuthSessionScope>()!.onLogout;
+
+  @override
+  bool updateShouldNotify(AuthSessionScope oldWidget) => session.accessToken != oldWidget.session.accessToken;
 }
 
 class LoginPage extends StatefulWidget {
