@@ -622,26 +622,31 @@ class ResumeService {
       .toList();
 
   Future<void> _searchJobs(HttpRequest request, String userId) async {
-    final keyword = request.uri.queryParameters['keyword']?.toLowerCase() ?? '';
-    final platforms =
-        request.uri.queryParametersAll['platforms'] ?? const <String>[];
-    final city = request.uri.queryParameters['city'] ?? '';
+    final keywords = (request.uri.queryParameters['keyword'] ?? '')
+        .split(',').map((value) => value.trim().toLowerCase()).where((value) => value.isNotEmpty).toList();
+    final platforms = (request.uri.queryParameters['platforms'] ?? '')
+        .split(',').map((value) => value.trim()).where((value) => value.isNotEmpty).toList();
+    final cities = (request.uri.queryParameters['city'] ?? '')
+        .split(',').map((value) => value.trim()).where((value) => value.isNotEmpty).toList();
+    final minSalary = int.tryParse(request.uri.queryParameters['minSalary'] ?? '');
+    final maxSalary = int.tryParse(request.uri.queryParameters['maxSalary'] ?? '');
+    final onlyHighMatch = request.uri.queryParameters['onlyHighMatch'] == 'true';
     final authorizedPlatforms = supportedPlatforms
         .where((platform) => _platformAccount(userId, platform)?.status == 'connected')
         .toSet();
     final all = demoJobs;
     final filtered = all.where((job) {
-      final keywordMatched = keyword.isEmpty ||
-          '${job['title']} ${job['company']} ${job['tags']}'
-              .toLowerCase()
-              .contains(keyword);
-      final platformMatched =
-          platforms.isEmpty ||
-          (platforms.contains(job['platform']) &&
-              authorizedPlatforms.contains(job['platform']));
+      final searchable = '${job['title']} ${job['company']} ${job['tags']}'.toLowerCase();
+      final keywordMatched = keywords.isEmpty || keywords.any(searchable.contains);
+      final platformMatched = platforms.isEmpty
+          ? authorizedPlatforms.contains(job['platform'])
+          : platforms.contains(job['platform']) &&
+              authorizedPlatforms.contains(job['platform']);
       final cityMatched =
-          city.isEmpty || _string(job['location']).contains(city);
-      return keywordMatched && platformMatched && cityMatched;
+          cities.isEmpty || cities.any((value) => _string(job['location']).contains(value));
+      final scoreMatched = !onlyHighMatch || ((job['matchScore'] as num?)?.toInt() ?? 0) >= 80;
+      return keywordMatched && platformMatched && cityMatched && scoreMatched &&
+          (minSalary == null || maxSalary == null || _salaryOverlaps(_string(job['salary']), minSalary, maxSalary));
     }).toList();
     _json(request.response, HttpStatus.ok, {
       'items': filtered,
@@ -1200,6 +1205,14 @@ List<Map<String, dynamic>> _maps(Object? value) => (value as List? ?? const [])
     .toList();
 
 String _accountKey(String userId, String platform) => '$userId::$platform';
+
+bool _salaryOverlaps(String value, int min, int max) {
+  final match = RegExp(r'(\d+)[-~](\d+)').firstMatch(value);
+  if (match == null) return true;
+  final low = int.tryParse(match.group(1)!) ?? 0;
+  final high = int.tryParse(match.group(2)!) ?? 999;
+  return high >= min && low <= max;
+}
 
 Future<Map<String, dynamic>> _readJson(HttpRequest request) async {
   final raw = await utf8.decoder.bind(request).join();

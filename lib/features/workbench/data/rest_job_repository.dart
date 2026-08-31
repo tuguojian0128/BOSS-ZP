@@ -11,6 +11,9 @@ class RestJobRepository implements JobRepository {
       'keyword': query.keywords.join(','),
       'city': query.cities.join(','),
       'platforms': query.platforms.join(','),
+      if (query.minSalaryK != null) 'minSalary': '${query.minSalaryK}',
+      if (query.maxSalaryK != null) 'maxSalary': '${query.maxSalaryK}',
+      'onlyHighMatch': '${query.onlyHighMatch}',
       'page': '${query.page}',
       'pageSize': '${query.pageSize}'
     });

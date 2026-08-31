@@ -11,6 +11,10 @@ import 'features/applications/domain/application_repository.dart';
 import 'core/network/api_client.dart';
 import 'features/auth/presentation/auth_gate.dart';
 import 'features/auth/domain/auth_repository.dart';
+import 'features/workbench/data/rest_job_repository.dart';
+import 'features/workbench/domain/job_repository.dart';
+import 'features/platform_accounts/data/rest_platform_account_repository.dart';
+import 'features/platform_accounts/domain/platform_account_repository.dart';
 
 void main() {
   runApp(const BossJobWorkbenchApp());
@@ -174,7 +178,15 @@ class Job {
 }
 
 class WorkbenchController extends ChangeNotifier {
-  WorkbenchController() : _jobs = _sampleJobs;
+  WorkbenchController()
+      : _jobs = _sampleJobs,
+        _jobRepository = RestJobRepository(ApiClient()),
+        _platformRepository = RestPlatformAccountRepository(ApiClient()) {
+    refreshPlatformAccounts();
+  }
+  final JobRepository _jobRepository;
+  final PlatformAccountRepository _platformRepository;
+  String? searchError;
 
   static const List<Job> _sampleJobs = [
     Job(
@@ -400,14 +412,54 @@ class WorkbenchController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> refreshPlatformAccounts() async {
+    try {
+      final accounts = await _platformRepository.getAccounts();
+      for (final account in accounts) {
+        platformConnections[account.platform] = account.isConnected;
+      }
+      notifyListeners();
+    } catch (_) {
+      // The page remains usable while the API is starting; a later refresh
+      // will reconcile the displayed state with the server.
+    }
+  }
+
   Future<void> search() async {
     isSearching = true;
+    searchError = null;
     notifyListeners();
-    await Future<void>.delayed(const Duration(milliseconds: 650));
-    lastSearchedAt = DateTime.now();
+    try {
+      final result = await _jobRepository.search(JobQuery(
+        keywords: keywords,
+        cities: selectedCities,
+        platforms: selectedPlatforms.toList(),
+        minSalaryK: minSalaryK,
+        maxSalaryK: maxSalaryK,
+        onlyHighMatch: onlyHighMatch,
+      ));
+      _jobs = result.items.map(_jobFromApi).toList();
+      lastSearchedAt = DateTime.now();
+    } catch (error) {
+      searchError = '职位筛选失败，请检查后端服务和平台连接状态';
+    }
     isSearching = false;
     notifyListeners();
   }
+
+  Job _jobFromApi(Map<String, dynamic> item) => Job(
+        id: item['id'].toString(),
+        title: item['title']?.toString() ?? '未命名职位',
+        company: item['company']?.toString() ?? '未知公司',
+        location: item['location']?.toString() ?? '不限地区',
+        salary: item['salary']?.toString() ?? '薪资面议',
+        experience: item['experience']?.toString() ?? '经验不限',
+        education: item['education']?.toString() ?? '学历不限',
+        matchScore: (item['matchScore'] as num?)?.toInt() ?? 0,
+        tags: (item['tags'] as List? ?? const []).map((value) => value.toString()).toList(),
+        description: item['description']?.toString() ?? '职位详情以招聘平台展示为准。',
+        platform: item['platform']?.toString() ?? 'BOSS 直聘',
+      );
 
   Future<void> applyAll() async {
     if (isApplying || selectedCount == 0) return;
@@ -449,6 +501,14 @@ class WorkbenchPage extends StatefulWidget {
 class _WorkbenchPageState extends State<WorkbenchPage> {
   final WorkbenchController controller = WorkbenchController();
   int selectedNav = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    // The controller is created before the login gate completes; refresh
+    // platform state once the authenticated page is mounted.
+    controller.refreshPlatformAccounts();
+  }
 
   @override
   void dispose() {
