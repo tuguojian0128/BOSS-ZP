@@ -15,6 +15,7 @@ import 'features/workbench/data/rest_job_repository.dart';
 import 'features/workbench/domain/job_repository.dart';
 import 'features/platform_accounts/data/rest_platform_account_repository.dart';
 import 'features/platform_accounts/domain/platform_account_repository.dart';
+import 'core/browser/browser_bridge.dart';
 
 void main() {
   runApp(const BossJobWorkbenchApp());
@@ -1438,6 +1439,7 @@ class _PlatformAccountsPageState extends State<_PlatformAccountsPage> {
   late final PlatformAccountRepository repository =
       RestPlatformAccountRepository(ApiClient());
   bool loading = false;
+  final BrowserBridge browserBridge = BrowserBridge();
 
   WorkbenchController get controller => widget.controller;
 
@@ -1494,12 +1496,23 @@ class _PlatformAccountsPageState extends State<_PlatformAccountsPage> {
     }
   }
 
+  Future<void> _checkBrowser(BuildContext context) async {
+    final result = await browserBridge.request('check_login');
+    if (!context.mounted) return;
+    final message = result == null
+        ? '未检测到扩展响应，请确认已安装扩展并打开 BOSS 页面。'
+        : result['loggedIn'] == true
+            ? '已检测到 BOSS 登录状态，可以读取当前页面职位。'
+            : '已连接扩展，但 BOSS 页面尚未登录。';
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       _SectionHeader(title: '平台账号', subtitle: '连接招聘平台后，工作台才会显示对应平台的职位筛选结果。'),
       const SizedBox(height: 24),
-      _GlassCard(padding: const EdgeInsets.all(20), child: Row(children: [const Icon(Icons.lock_outline_rounded, color: Color(0xFF007AFF)), const SizedBox(width: 12), const Expanded(child: Text('安全提示：登录始终在招聘平台官方页面完成。本应用不读取、不复制第三方 Cookie，也不会保存你的密码。', style: TextStyle(color: Color(0xFF475569,)))), TextButton(onPressed: () {}, child: const Text('了解更多'))])),
+      _GlassCard(padding: const EdgeInsets.all(20), child: Row(children: [const Icon(Icons.lock_outline_rounded, color: Color(0xFF007AFF)), const SizedBox(width: 12), const Expanded(child: Text('安全提示：登录始终在招聘平台官方页面完成。本应用不读取、不复制第三方 Cookie，也不会保存你的密码。', style: TextStyle(color: Color(0xFF475569,)))), TextButton(onPressed: () => _checkBrowser(context), child: const Text('检测浏览器扩展'))])),
       const SizedBox(height: 16),
       Wrap(spacing: 14, runSpacing: 14, children: platforms.map((item) {
         final connected = controller.isPlatformConnected(item.$1);

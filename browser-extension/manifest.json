@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "求职工作台 · BOSS 辅助",
+  "version": "0.0.1",
+  "description": "连接求职工作台与用户当前打开的 BOSS 页面，仅读取页面可见职位信息。",
+  "permissions": ["storage", "tabs"],
+  "host_permissions": ["https://www.zhipin.com/*", "https://zhipin.com/*"],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.zhipin.com/*", "https://zhipin.com/*"],
+      "js": ["content-script.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["http://127.0.0.1:8080/*", "http://localhost:8080/*"],
+      "js": ["content-script.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "求职工作台"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  }
+}
