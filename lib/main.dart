@@ -186,6 +186,10 @@ class WorkbenchController extends ChangeNotifier {
   }
   final JobRepository _jobRepository;
   final PlatformAccountRepository _platformRepository;
+  final ApplicationRepository _applicationRepository =
+      RestApplicationRepository(ApiClient());
+  DeliveryTask? activeDeliveryTask;
+  String? deliveryError;
   String? searchError;
 
   static const List<Job> _sampleJobs = [
@@ -464,21 +468,45 @@ class WorkbenchController extends ChangeNotifier {
   Future<void> applyAll() async {
     if (isApplying || selectedCount == 0) return;
     isApplying = true;
+    deliveryError = null;
     notifyListeners();
-
-    for (final job in visibleJobs) {
-      if (job.status != ApplicationStatus.ready) continue;
-      _replace(job.id, job.copyWith(status: ApplicationStatus.queued));
-      await Future<void>.delayed(const Duration(milliseconds: 260));
-      _replace(job.id, job.copyWith(status: ApplicationStatus.applying));
+    final jobs = visibleJobs.where((job) => job.status == ApplicationStatus.ready).toList();
+    for (final job in jobs) _replace(job.id, job.copyWith(status: ApplicationStatus.queued));
+    notifyListeners();
+    try {
+      var task = await _applicationRepository.createDeliveryTask(
+        resumeId: '',
+        jobs: jobs.map((job) => DeliveryJob(id: job.id, platform: job.platform, title: job.title, company: job.company)).toList(),
+      );
+      activeDeliveryTask = task;
       notifyListeners();
-      await Future<void>.delayed(const Duration(milliseconds: 560));
-      _replace(job.id, job.copyWith(status: ApplicationStatus.submitted));
+      while (task.status != DeliveryTaskStatus.completed &&
+          task.status != DeliveryTaskStatus.failed &&
+          task.status != DeliveryTaskStatus.partiallyFailed) {
+        await Future<void>.delayed(const Duration(milliseconds: 500));
+        task = await _applicationRepository.getDeliveryTask(task.id);
+        activeDeliveryTask = task;
+        final completed = task.completed.clamp(0, jobs.length);
+        for (var index = 0; index < completed; index++) {
+          _replace(jobs[index].id, jobs[index].copyWith(status: ApplicationStatus.submitted));
+        }
+        if (task.status == DeliveryTaskStatus.running) {
+          for (var index = completed; index < jobs.length; index++) {
+            _replace(jobs[index].id, jobs[index].copyWith(status: ApplicationStatus.applying));
+          }
+        }
+        notifyListeners();
+      }
+      if (task.status != DeliveryTaskStatus.completed) {
+        deliveryError = task.message ?? '部分职位投递失败';
+      }
+    } catch (_) {
+      deliveryError = '投递任务创建失败，请先导入简历并确认平台已授权';
+      for (final job in jobs) _replace(job.id, job.copyWith(status: ApplicationStatus.failed));
+    } finally {
+      isApplying = false;
       notifyListeners();
     }
-
-    isApplying = false;
-    notifyListeners();
   }
 
   void _replace(String id, Job job) {
@@ -1909,6 +1937,18 @@ class _JobsSection extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 15),
+        if (controller.deliveryError != null) ...[
+          _InlineNotice(text: controller.deliveryError!, isError: true),
+          const SizedBox(height: 12),
+        ],
+        if (controller.activeDeliveryTask != null && controller.isApplying)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Text(
+              '任务进度：${controller.activeDeliveryTask!.completed}/${controller.activeDeliveryTask!.total}，${controller.activeDeliveryTask!.message ?? '正在处理'}',
+              style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
+            ),
+          ),
         if (jobs.isEmpty)
           const _GlassCard(padding: EdgeInsets.all(30), child: Center(child: Text('没有符合当前条件的职位')))
         else if (compact)

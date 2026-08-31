@@ -752,12 +752,18 @@ class ResumeService {
 
   Future<void> _createDeliveryTask(HttpRequest request, String userId) async {
     final body = await _readJson(request);
-    final resumeId = _string(body['resumeId']);
+    var resumeId = _string(body['resumeId']);
     final jobs = (body['jobs'] as List? ?? const []);
-    if (resumeId.isEmpty || jobs.isEmpty || jobs.length > 200) {
+    if (jobs.isEmpty || jobs.length > 200) {
       _json(request.response, HttpStatus.badRequest,
           {'error': jobs.isEmpty ? 'jobs_required' : 'invalid_delivery_batch'});
       return;
+    }
+    if (resumeId.isEmpty) {
+      final rows = database.db.select(
+          'SELECT id FROM resumes WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1',
+          [userId]);
+      if (rows.isNotEmpty) resumeId = rows.first['id'].toString();
     }
     final resume = resumes[resumeId];
     if (resume == null || resume.userId != userId) {
