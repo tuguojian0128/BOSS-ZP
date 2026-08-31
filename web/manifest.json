@@ -1,0 +1,9 @@
+{
+  "name": "BOSS 求职工作台",
+  "short_name": "求职工作台",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#F6F8FC",
+  "theme_color": "#2563EB",
+  "description": "AI 简历优化与 BOSS 直聘职位工作台"
+}

@@ -1,0 +1,25 @@
+name: boss_job_workbench
+description: BOSS 直聘授权投递工作台的 Flutter Web MVP。
+publish_to: 'none'
+version: 0.0.1+1
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  file_picker: ^8.1.7
+  url_launcher: ^6.3.1
+  http: ^1.2.2
+  sqlite3: ^2.7.6
+  crypto: ^3.0.6
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.2
+
+flutter:
+  uses-material-design: true
