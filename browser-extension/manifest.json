@@ -3,6 +3,7 @@
   "name": "求职工作台 · BOSS 辅助",
   "version": "0.0.1",
   "description": "连接求职工作台与用户当前打开的 BOSS 页面，仅读取页面可见职位信息。",
+  "homepage_url": "https://github.com/tuguojian0128/BOSS-ZP",
   "permissions": ["storage", "tabs"],
   "host_permissions": ["https://www.zhipin.com/*", "https://zhipin.com/*"],
   "background": {
